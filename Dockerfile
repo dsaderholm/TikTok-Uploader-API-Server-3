@@ -1,11 +1,12 @@
 # Use Python slim image
-FROM python:3.10-slim
+FROM python:3.9-slim
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     DEBIAN_FRONTEND=noninteractive \
-    DISPLAY=:99
+    DISPLAY=:99 \
+    PIP_NO_CACHE_DIR=1
 
 # Install system dependencies including Xvfb
 RUN apt-get update && apt-get install -y \
@@ -52,6 +53,9 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
+
+# Upgrade pip first
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel
 
 # Install Python dependencies
 COPY requirements.txt .
