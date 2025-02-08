@@ -5,6 +5,7 @@ import os
 import shutil
 import tempfile
 from tiktok_uploader.upload import upload_video
+from selenium.webdriver.chrome.options import Options
 import logging
 import asyncio
 import json
@@ -39,14 +40,19 @@ def clean_string(s):
         s = s.replace('{', '').replace('}', '')
     return s
 
-def cleanup_chrome_data():
-    """Clean up all Chrome temporary directories"""
-    try:
-        if os.path.exists(CHROME_TMP_DIR):
-            shutil.rmtree(CHROME_TMP_DIR)
-            os.makedirs(CHROME_TMP_DIR)
-    except Exception as e:
-        logger.error(f"Error cleaning up Chrome data: {str(e)}")
+def create_chrome_options(user_data_dir: str) -> Options:
+    """Create Chrome options with necessary settings"""
+    options = Options()
+    options.add_argument('--no-sandbox')
+    options.add_argument('--headless=new')  # New headless mode
+    options.add_argument('--disable-dev-shm-usage')
+    options.add_argument('--disable-gpu')
+    options.add_argument(f'--user-data-dir={user_data_dir}')
+    options.add_argument('--window-size=1920,1080')
+    options.add_argument('--disable-blink-features=AutomationControlled')
+    options.add_experimental_option('excludeSwitches', ['enable-automation'])
+    options.add_experimental_option('useAutomationExtension', False)
+    return options
 
 async def run_upload_in_thread(
     filename: str,
@@ -72,28 +78,16 @@ async def run_upload_in_thread(
         logger.debug(f"Using cookies from: {cookie_file}")
         logger.debug(f"Using Chrome user directory: {chrome_user_dir}")
         
-        # Clean up any existing Chrome data
-        cleanup_chrome_data()
-        
-        # Configure Chrome options for this session
-        browser_config = {
-            'headless': headless,
-            'options': [
-                '--no-sandbox',
-                '--disable-dev-shm-usage',
-                '--disable-gpu',
-                f'--user-data-dir={chrome_user_dir}',
-                '--incognito'
-            ]
-        }
+        # Create Chrome options
+        chrome_options = create_chrome_options(chrome_user_dir)
         
         result = await asyncio.to_thread(
             upload_video,
             filename,
             description=description_with_tags,
             cookies=cookie_file,
-            browser='chrome',
-            browser_config=browser_config
+            options=chrome_options,  # Pass the Chrome options directly
+            browser='chrome'
         )
         
         if result:
@@ -140,7 +134,6 @@ async def upload_video_endpoint(
         if not os.path.exists(cookie_file):
             raise HTTPException(status_code=400, detail=f"Cookie file not found for account {accountname}")
             
-        # Verify cookie file is not empty and contains sessionid
         try:
             with open(cookie_file, 'r') as f:
                 cookie_content = f.read()
