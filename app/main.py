@@ -11,7 +11,6 @@ from functools import partial
 import json
 from audio_processor import AudioProcessor
 import uuid
-import time
 
 app = FastAPI(title="TikTok Uploader API v3")
 
@@ -24,10 +23,6 @@ logger = logging.getLogger(__name__)
 
 COOKIE_DIR = "/app/cookies"
 SOUNDS_DIR = "/app/sounds"
-CHROME_DATA_DIR = "/tmp/chrome-data"
-
-# Ensure Chrome data directory exists
-os.makedirs(CHROME_DATA_DIR, exist_ok=True)
 
 def process_hashtags(hashtags: str) -> str:
     """Process hashtags string into proper format."""
@@ -44,20 +39,6 @@ def clean_string(s):
         s = s.strip("'\"")
         s = s.replace('{', '').replace('}', '')
     return s
-
-def cleanup_chrome_data():
-    """Clean up old Chrome data directories."""
-    try:
-        if os.path.exists(CHROME_DATA_DIR):
-            for item in os.listdir(CHROME_DATA_DIR):
-                item_path = os.path.join(CHROME_DATA_DIR, item)
-                if os.path.isdir(item_path):
-                    try:
-                        shutil.rmtree(item_path)
-                    except Exception as e:
-                        logger.error(f"Failed to remove directory {item_path}: {str(e)}")
-    except Exception as e:
-        logger.error(f"Error during Chrome data cleanup: {str(e)}")
 
 async def run_upload_in_thread(
     video_path: str,
@@ -78,51 +59,21 @@ async def run_upload_in_thread(
     # Load cookies from file
     cookie_file = os.path.join(COOKIE_DIR, f'{accountname}.txt')
     
-    # Create unique user data directory for this session
-    timestamp = int(time.time())
-    session_id = f"{uuid.uuid4()}_{timestamp}"
-    session_data_dir = os.path.join(CHROME_DATA_DIR, session_id)
-    
-    # Clean up old directories first
-    cleanup_chrome_data()
-    
-    # Create new directory
-    os.makedirs(session_data_dir, exist_ok=True)
-    
     try:
-        # Configure browser settings
-        browser_config = {
-            'headless': headless,
-            'user_data_dir': session_data_dir,
-            'options': [
-                '--no-sandbox',
-                '--disable-dev-shm-usage',
-                '--disable-gpu',
-                '--disable-software-rasterizer',
-                f'--user-data-dir={session_data_dir}'
-            ]
-        }
-        
-        # Run upload in thread to not block
+        # Note: Looking at cli.py, we only need to pass basic parameters
+        # The upload_video function handles the browser configuration internally
         upload_func = partial(
             upload_video,
-            video_path,
+            filename=video_path,
             description=description_with_tags,
             cookies=cookie_file,
-            browser_config=browser_config
+            headless=headless
         )
         
         return await asyncio.to_thread(upload_func)
     except Exception as e:
         logger.error(f"Upload failed with error: {str(e)}")
         raise
-    finally:
-        # Cleanup Chrome user data directory
-        try:
-            if os.path.exists(session_data_dir):
-                shutil.rmtree(session_data_dir, ignore_errors=True)
-        except Exception as e:
-            logger.error(f"Failed to cleanup Chrome data directory: {str(e)}")
 
 @app.post("/upload")
 async def upload_video_endpoint(
