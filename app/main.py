@@ -10,6 +10,7 @@ import asyncio
 from functools import partial
 import json
 from audio_processor import AudioProcessor
+import uuid
 
 app = FastAPI(title="TikTok Uploader API v3")
 
@@ -22,6 +23,10 @@ logger = logging.getLogger(__name__)
 
 COOKIE_DIR = "/app/cookies"
 SOUNDS_DIR = "/app/sounds"
+CHROME_DATA_DIR = "/tmp/chrome-data"
+
+# Ensure Chrome data directory exists
+os.makedirs(CHROME_DATA_DIR, exist_ok=True)
 
 def process_hashtags(hashtags: str) -> str:
     """Process hashtags string into proper format."""
@@ -58,6 +63,10 @@ async def run_upload_in_thread(
     # Load cookies from file
     cookie_file = os.path.join(COOKIE_DIR, f'{accountname}.txt')
     
+    # Create unique user data directory for this session
+    session_data_dir = os.path.join(CHROME_DATA_DIR, str(uuid.uuid4()))
+    os.makedirs(session_data_dir, exist_ok=True)
+    
     try:
         # Run upload in thread to not block
         upload_func = partial(
@@ -65,13 +74,24 @@ async def run_upload_in_thread(
             video_path,
             description=description_with_tags,
             cookies=cookie_file,
-            headless=headless
+            headless=headless,
+            options={
+                'user-data-dir': session_data_dir,
+                'no-sandbox': None,
+                'disable-dev-shm-usage': None
+            }
         )
         
         return await asyncio.to_thread(upload_func)
     except Exception as e:
         logger.error(f"Upload failed with error: {str(e)}")
         raise
+    finally:
+        # Cleanup Chrome user data directory
+        try:
+            shutil.rmtree(session_data_dir, ignore_errors=True)
+        except Exception as e:
+            logger.error(f"Failed to cleanup Chrome data directory: {str(e)}")
 
 @app.post("/upload")
 async def upload_video_endpoint(
