@@ -5,7 +5,6 @@ import os
 import shutil
 import tempfile
 from tiktok_uploader.upload import upload_video
-from tiktok_uploader.auth import AuthBackend
 import logging
 import asyncio
 import json
@@ -52,18 +51,16 @@ async def run_upload_in_thread(
     cookie_file = os.path.join(COOKIE_DIR, f'{accountname}.txt')
     
     try:
-        # Create AuthBackend instance
-        auth = AuthBackend(cookies=cookie_file)
-        logger.debug(f"Created AuthBackend with cookies from {cookie_file}")
+        logger.debug(f"Using cookies from: {cookie_file}")
         
-        # Use basic options as shown in documentation
+        # Use basic parameters, passing cookies file directly
         result = await asyncio.to_thread(
             upload_video,
-            filename,  # First positional argument is filename
+            filename,
             description=description_with_tags,
-            auth=auth,  # Pass auth object instead of cookies
+            cookies=cookie_file,  # Pass cookie file path directly
             headless=headless,
-            browser='chrome'  # Explicitly specify chrome
+            browser='chrome'
         )
         
         if result:
@@ -102,6 +99,18 @@ async def upload_video_endpoint(
         cookie_file = os.path.join(COOKIE_DIR, f'{accountname}.txt')
         if not os.path.exists(cookie_file):
             raise HTTPException(status_code=400, detail=f"Cookie file not found for account {accountname}")
+            
+        # Verify cookie file is not empty and contains sessionid
+        try:
+            with open(cookie_file, 'r') as f:
+                cookie_content = f.read()
+                if not cookie_content.strip():
+                    raise HTTPException(status_code=400, detail=f"Cookie file is empty for account {accountname}")
+                if 'sessionid' not in cookie_content:
+                    raise HTTPException(status_code=400, detail=f"Cookie file does not contain sessionid for account {accountname}")
+        except Exception as e:
+            logger.error(f"Error reading cookie file: {str(e)}")
+            raise HTTPException(status_code=400, detail=f"Error reading cookie file for account {accountname}")
         
         with tempfile.NamedTemporaryFile(delete=False, suffix='.mp4') as temp_video:
             shutil.copyfileobj(video.file, temp_video)
