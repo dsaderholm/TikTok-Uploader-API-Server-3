@@ -1,14 +1,13 @@
-# Use Python slim image
+# Use Python 3.9 slim image
 FROM python:3.9-slim
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     DEBIAN_FRONTEND=noninteractive \
-    DISPLAY=:99 \
-    PIP_NO_CACHE_DIR=1
+    DISPLAY=:99
 
-# Install system dependencies including Xvfb
+# Install system dependencies
 RUN apt-get update && apt-get install -y \
     wget \
     gnupg \
@@ -52,17 +51,15 @@ RUN apt-get update && apt-get install -y \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
+# Set working directory
 WORKDIR /app
 
-# Upgrade pip first
-RUN pip install --no-cache-dir --upgrade pip setuptools wheel
-
-# Install Python dependencies
+# Copy requirements file
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
-COPY ./app .
+# Install Python dependencies with upgraded pip
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
 
 # Create directories
 RUN mkdir -p /app/cookies /app/sounds
@@ -70,6 +67,9 @@ RUN mkdir -p /app/cookies /app/sounds
 # Set up Xvfb with higher resolution and color depth
 RUN printf '#!/bin/bash\nXvfb :99 -screen 0 1920x1080x24 &\nexec "$@"' > /entrypoint.sh && \
     chmod +x /entrypoint.sh
+
+# Copy application code
+COPY ./app .
 
 # Use entrypoint script to start Xvfb before the application
 ENTRYPOINT ["/entrypoint.sh"]
