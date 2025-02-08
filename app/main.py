@@ -11,6 +11,7 @@ from functools import partial
 import json
 from audio_processor import AudioProcessor
 import uuid
+import time
 
 app = FastAPI(title="TikTok Uploader API v3")
 
@@ -44,6 +45,20 @@ def clean_string(s):
         s = s.replace('{', '').replace('}', '')
     return s
 
+def cleanup_chrome_data():
+    """Clean up old Chrome data directories."""
+    try:
+        if os.path.exists(CHROME_DATA_DIR):
+            for item in os.listdir(CHROME_DATA_DIR):
+                item_path = os.path.join(CHROME_DATA_DIR, item)
+                if os.path.isdir(item_path):
+                    try:
+                        shutil.rmtree(item_path)
+                    except Exception as e:
+                        logger.error(f"Failed to remove directory {item_path}: {str(e)}")
+    except Exception as e:
+        logger.error(f"Error during Chrome data cleanup: {str(e)}")
+
 async def run_upload_in_thread(
     video_path: str,
     description: str,
@@ -64,7 +79,14 @@ async def run_upload_in_thread(
     cookie_file = os.path.join(COOKIE_DIR, f'{accountname}.txt')
     
     # Create unique user data directory for this session
-    session_data_dir = os.path.join(CHROME_DATA_DIR, str(uuid.uuid4()))
+    timestamp = int(time.time())
+    session_id = f"{uuid.uuid4()}_{timestamp}"
+    session_data_dir = os.path.join(CHROME_DATA_DIR, session_id)
+    
+    # Clean up old directories first
+    cleanup_chrome_data()
+    
+    # Create new directory
     os.makedirs(session_data_dir, exist_ok=True)
     
     try:
@@ -72,7 +94,13 @@ async def run_upload_in_thread(
         browser_config = {
             'headless': headless,
             'user_data_dir': session_data_dir,
-            'options': ['--no-sandbox', '--disable-dev-shm-usage']
+            'options': [
+                '--no-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-gpu',
+                '--disable-software-rasterizer',
+                f'--user-data-dir={session_data_dir}'
+            ]
         }
         
         # Run upload in thread to not block
@@ -91,7 +119,8 @@ async def run_upload_in_thread(
     finally:
         # Cleanup Chrome user data directory
         try:
-            shutil.rmtree(session_data_dir, ignore_errors=True)
+            if os.path.exists(session_data_dir):
+                shutil.rmtree(session_data_dir, ignore_errors=True)
         except Exception as e:
             logger.error(f"Failed to cleanup Chrome data directory: {str(e)}")
 
