@@ -68,18 +68,20 @@ async def run_upload_in_thread(
     os.makedirs(session_data_dir, exist_ok=True)
     
     try:
+        # Configure browser settings
+        browser_config = {
+            'headless': headless,
+            'user_data_dir': session_data_dir,
+            'options': ['--no-sandbox', '--disable-dev-shm-usage']
+        }
+        
         # Run upload in thread to not block
         upload_func = partial(
             upload_video,
             video_path,
             description=description_with_tags,
             cookies=cookie_file,
-            headless=headless,
-            options={
-                'user-data-dir': session_data_dir,
-                'no-sandbox': None,
-                'disable-dev-shm-usage': None
-            }
+            browser_config=browser_config
         )
         
         return await asyncio.to_thread(upload_func)
