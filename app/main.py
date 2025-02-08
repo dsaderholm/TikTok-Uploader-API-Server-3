@@ -5,18 +5,17 @@ import os
 import shutil
 import tempfile
 from tiktok_uploader.upload import upload_video
+from tiktok_uploader.auth import AuthBackend
 import logging
 import asyncio
-from functools import partial
 import json
 from audio_processor import AudioProcessor
 import uuid
 
 app = FastAPI(title="TikTok Uploader API v3")
 
-# Configure detailed logging
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG,
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
@@ -25,23 +24,20 @@ COOKIE_DIR = "/app/cookies"
 SOUNDS_DIR = "/app/sounds"
 
 def process_hashtags(hashtags: str) -> str:
-    """Process hashtags string into proper format."""
     if not hashtags:
         return ""
-    
     tags = hashtags.split(',')
     processed_tags = ' '.join([f'#{tag.lstrip("#").strip()}' for tag in tags if tag.strip()])
     return processed_tags
 
 def clean_string(s):
-    """Remove surrounding quotes and curly braces from string"""
     if isinstance(s, str):
         s = s.strip("'\"")
         s = s.replace('{', '').replace('}', '')
     return s
 
 async def run_upload_in_thread(
-    video_path: str,
+    filename: str,
     description: str,
     accountname: str,
     hashtags: Optional[str] = None,
@@ -50,27 +46,33 @@ async def run_upload_in_thread(
     schedule: Optional[str] = None,
     headless: Optional[bool] = True,
 ):
-    """Run the upload_tiktok function in a thread pool with detailed logging."""
     logger.info(f"Starting upload for account: {accountname}")
     
-    # Process hashtags
     description_with_tags = f"{description} {process_hashtags(hashtags)}" if hashtags else description
-    
-    # Load cookies from file
     cookie_file = os.path.join(COOKIE_DIR, f'{accountname}.txt')
     
     try:
-        # Note: Looking at cli.py, we only need to pass basic parameters
-        # The upload_video function handles the browser configuration internally
-        upload_func = partial(
+        # Create AuthBackend instance
+        auth = AuthBackend(cookies=cookie_file)
+        logger.debug(f"Created AuthBackend with cookies from {cookie_file}")
+        
+        # Use basic options as shown in documentation
+        result = await asyncio.to_thread(
             upload_video,
-            filename=video_path,
+            filename,  # First positional argument is filename
             description=description_with_tags,
-            cookies=cookie_file,
-            headless=headless
+            auth=auth,  # Pass auth object instead of cookies
+            headless=headless,
+            browser='chrome'  # Explicitly specify chrome
         )
         
-        return await asyncio.to_thread(upload_func)
+        if result:
+            logger.error('Error while uploading video')
+            raise Exception('Error while uploading video')
+        else:
+            logger.info('Video uploaded successfully')
+            
+        return result
     except Exception as e:
         logger.error(f"Upload failed with error: {str(e)}")
         raise
@@ -86,30 +88,26 @@ async def upload_video_endpoint(
     schedule: Optional[str] = Form(None),
     headless: Optional[bool] = Form(True),
 ):
-    temp_files = []  # Keep track of temporary files to clean up
+    temp_files = []
 
     try:
         logger.info(f"Received upload request for account: {accountname}")
         
-        # Clean input strings
         description = clean_string(description)
         accountname = clean_string(accountname)
         hashtags = clean_string(hashtags) if hashtags else None
         sound_name = clean_string(sound_name) if sound_name else None
         sound_aud_vol = clean_string(sound_aud_vol) if sound_aud_vol else 'mix'
         
-        # Validate account and cookie
         cookie_file = os.path.join(COOKIE_DIR, f'{accountname}.txt')
         if not os.path.exists(cookie_file):
             raise HTTPException(status_code=400, detail=f"Cookie file not found for account {accountname}")
         
-        # Handle video file
         with tempfile.NamedTemporaryFile(delete=False, suffix='.mp4') as temp_video:
             shutil.copyfileobj(video.file, temp_video)
             temp_video_path = temp_video.name
             temp_files.append(temp_video_path)
         
-        # Process audio if sound is specified
         final_video_path = temp_video_path
         if sound_name:
             processor = AudioProcessor()
@@ -132,9 +130,8 @@ async def upload_video_endpoint(
                 raise HTTPException(status_code=500, detail=f"Error processing audio: {str(e)}")
         
         try:
-            # Attempt upload
             await run_upload_in_thread(
-                video_path=final_video_path,
+                filename=final_video_path,
                 description=description,
                 accountname=accountname,
                 hashtags=hashtags,
@@ -158,7 +155,6 @@ async def upload_video_endpoint(
         raise HTTPException(status_code=500, detail=str(e))
         
     finally:
-        # Cleanup
         for temp_file in temp_files:
             if temp_file and os.path.exists(temp_file):
                 try:
