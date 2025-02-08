@@ -21,6 +21,10 @@ logger = logging.getLogger(__name__)
 
 COOKIE_DIR = "/app/cookies"
 SOUNDS_DIR = "/app/sounds"
+CHROME_TMP_DIR = "/tmp/chrome-data"
+
+# Ensure Chrome temporary directory exists
+os.makedirs(CHROME_TMP_DIR, exist_ok=True)
 
 def process_hashtags(hashtags: str) -> str:
     if not hashtags:
@@ -35,6 +39,15 @@ def clean_string(s):
         s = s.replace('{', '').replace('}', '')
     return s
 
+def cleanup_chrome_data():
+    """Clean up all Chrome temporary directories"""
+    try:
+        if os.path.exists(CHROME_TMP_DIR):
+            shutil.rmtree(CHROME_TMP_DIR)
+            os.makedirs(CHROME_TMP_DIR)
+    except Exception as e:
+        logger.error(f"Error cleaning up Chrome data: {str(e)}")
+
 async def run_upload_in_thread(
     filename: str,
     description: str,
@@ -47,20 +60,40 @@ async def run_upload_in_thread(
 ):
     logger.info(f"Starting upload for account: {accountname}")
     
+    # Create a unique temporary directory for this session
+    session_id = str(uuid.uuid4())
+    chrome_user_dir = os.path.join(CHROME_TMP_DIR, session_id)
+    os.makedirs(chrome_user_dir, exist_ok=True)
+    
     description_with_tags = f"{description} {process_hashtags(hashtags)}" if hashtags else description
     cookie_file = os.path.join(COOKIE_DIR, f'{accountname}.txt')
     
     try:
         logger.debug(f"Using cookies from: {cookie_file}")
+        logger.debug(f"Using Chrome user directory: {chrome_user_dir}")
         
-        # Use basic parameters, passing cookies file directly
+        # Clean up any existing Chrome data
+        cleanup_chrome_data()
+        
+        # Configure Chrome options for this session
+        browser_config = {
+            'headless': headless,
+            'options': [
+                '--no-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-gpu',
+                f'--user-data-dir={chrome_user_dir}',
+                '--incognito'
+            ]
+        }
+        
         result = await asyncio.to_thread(
             upload_video,
             filename,
             description=description_with_tags,
-            cookies=cookie_file,  # Pass cookie file path directly
-            headless=headless,
-            browser='chrome'
+            cookies=cookie_file,
+            browser='chrome',
+            browser_config=browser_config
         )
         
         if result:
@@ -73,6 +106,13 @@ async def run_upload_in_thread(
     except Exception as e:
         logger.error(f"Upload failed with error: {str(e)}")
         raise
+    finally:
+        # Clean up the temporary Chrome directory
+        try:
+            if os.path.exists(chrome_user_dir):
+                shutil.rmtree(chrome_user_dir)
+        except Exception as e:
+            logger.error(f"Failed to cleanup Chrome directory: {str(e)}")
 
 @app.post("/upload")
 async def upload_video_endpoint(
