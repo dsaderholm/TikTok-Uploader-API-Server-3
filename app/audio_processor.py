@@ -9,7 +9,7 @@ class AudioProcessor:
     def __init__(self):
         self.volume_presets = {
             'mix': ('0.5', '0.5'),
-            'background': ('0.8', '0.2'),
+            'background': ('0.9', '0.1'),  # Reduced background volume from 0.2 to 0.1
             'main': ('0.2', '0.8')
         }
 
