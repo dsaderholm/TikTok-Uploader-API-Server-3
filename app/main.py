@@ -1,6 +1,5 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException, Form
-from fastapi.responses import JSONResponse
-from typing import List, Optional
+from typing import Optional
 import os
 import shutil
 import tempfile
@@ -8,8 +7,6 @@ from tiktok_uploader.upload import upload_video
 from selenium.webdriver.chrome.options import Options
 import logging
 import asyncio
-import json
-
 import uuid
 
 app = FastAPI(title="TikTok Uploader API v3")
@@ -28,11 +25,6 @@ CHROME_TMP_DIR = "/tmp/chrome-data"
 os.makedirs(CHROME_TMP_DIR, exist_ok=True)
 
 
-def clean_string(s):
-    if isinstance(s, str):
-        s = s.strip("'\"")
-        s = s.replace('{', '').replace('}', '')
-    return s
 
 def create_chrome_options(user_data_dir: str) -> Options:
     """Create Chrome options with necessary settings"""
@@ -62,7 +54,8 @@ async def run_upload_in_thread(
     chrome_user_dir = os.path.join(CHROME_TMP_DIR, session_id)
     os.makedirs(chrome_user_dir, exist_ok=True)
     
-    description_with_tags = description
+    # Use description directly
+    final_description = description
     cookie_file = os.path.join(COOKIE_DIR, f'{accountname}.txt')
     
     try:
@@ -75,7 +68,7 @@ async def run_upload_in_thread(
         result = await asyncio.to_thread(
             upload_video,
             filename,
-            description=description_with_tags,
+            description=final_description,
             cookies=cookie_file,
             options=chrome_options,  # Pass the Chrome options directly
             browser='chrome'
@@ -111,9 +104,6 @@ async def upload_video_endpoint(
 
     try:
         logger.info(f"Received upload request for account: {accountname}")
-        
-        description = clean_string(description)
-        accountname = clean_string(accountname)
         
         cookie_file = os.path.join(COOKIE_DIR, f'{accountname}.txt')
         if not os.path.exists(cookie_file):
