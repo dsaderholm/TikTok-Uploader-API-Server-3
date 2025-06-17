@@ -9,7 +9,7 @@ from selenium.webdriver.chrome.options import Options
 import logging
 import asyncio
 import json
-from audio_processor import AudioProcessor
+
 import uuid
 
 app = FastAPI(title="TikTok Uploader API v3")
@@ -21,7 +21,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 COOKIE_DIR = "/app/cookies"
-SOUNDS_DIR = "/app/sounds"
+
 CHROME_TMP_DIR = "/tmp/chrome-data"
 
 # Ensure Chrome temporary directory exists
@@ -59,8 +59,6 @@ async def run_upload_in_thread(
     description: str,
     accountname: str,
     hashtags: Optional[str] = None,
-    sound_name: Optional[str] = None,
-    sound_aud_vol: Optional[str] = 'mix',
     schedule: Optional[str] = None,
     headless: Optional[bool] = True,
 ):
@@ -114,8 +112,6 @@ async def upload_video_endpoint(
     description: str = Form(...),
     accountname: str = Form(...),
     hashtags: Optional[str] = Form(None),
-    sound_name: Optional[str] = Form(None),
-    sound_aud_vol: Optional[str] = Form('mix'),
     schedule: Optional[str] = Form(None),
     headless: Optional[bool] = Form(True),
 ):
@@ -127,8 +123,6 @@ async def upload_video_endpoint(
         description = clean_string(description)
         accountname = clean_string(accountname)
         hashtags = clean_string(hashtags) if hashtags else None
-        sound_name = clean_string(sound_name) if sound_name else None
-        sound_aud_vol = clean_string(sound_aud_vol) if sound_aud_vol else 'mix'
         
         cookie_file = os.path.join(COOKIE_DIR, f'{accountname}.txt')
         if not os.path.exists(cookie_file):
@@ -150,26 +144,8 @@ async def upload_video_endpoint(
             temp_video_path = temp_video.name
             temp_files.append(temp_video_path)
         
+        # Use the original video without audio processing
         final_video_path = temp_video_path
-        if sound_name:
-            processor = AudioProcessor()
-            sound_path = os.path.join(SOUNDS_DIR, f'{sound_name}.mp3')
-            logger.info(f"Looking for sound file at: {sound_path}")
-            
-            if not os.path.exists(sound_path):
-                raise HTTPException(status_code=404, detail=f"Sound file not found: {sound_name}")
-            
-            try:
-                final_video_path = processor.mix_audio(
-                    temp_video_path,
-                    sound_path,
-                    sound_aud_vol
-                )
-                temp_files.append(final_video_path)
-                logger.info(f"Audio processed, new video path: {final_video_path}")
-            except Exception as e:
-                logger.error(f"Error processing audio: {str(e)}")
-                raise HTTPException(status_code=500, detail=f"Error processing audio: {str(e)}")
         
         try:
             await run_upload_in_thread(
@@ -177,8 +153,6 @@ async def upload_video_endpoint(
                 description=description,
                 accountname=accountname,
                 hashtags=hashtags,
-                sound_name=sound_name,
-                sound_aud_vol=sound_aud_vol,
                 schedule=schedule,
                 headless=headless,
             )

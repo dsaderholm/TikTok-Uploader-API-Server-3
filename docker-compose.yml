@@ -12,10 +12,7 @@ services:
       - 8771:8048
     restart: unless-stopped
     volumes:
-      - instagram-uploader_instagram-reels_sounds:/app/sounds
       - tiktok-uploader-3_cookies:/app/cookies
 volumes:
-  instagram-uploader_instagram-reels_sounds:
-    name: instagram-uploader_instagram-reels_sounds
   tiktok-uploader-3_cookies:
     name: tiktok-uploader-3_cookies

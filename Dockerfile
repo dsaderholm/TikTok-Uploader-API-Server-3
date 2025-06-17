@@ -11,7 +11,6 @@ ENV PYTHONUNBUFFERED=1 \
 RUN apt-get update && apt-get install -y \
     wget \
     gnupg \
-    ffmpeg \
     xvfb \
     ca-certificates \
     fonts-liberation \
@@ -62,7 +61,7 @@ RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
 # Create directories
-RUN mkdir -p /app/cookies /app/sounds
+RUN mkdir -p /app/cookies
 
 # Set up Xvfb with higher resolution and color depth
 RUN printf '#!/bin/bash\nXvfb :99 -screen 0 1920x1080x24 &\nexec "$@"' > /entrypoint.sh && \
