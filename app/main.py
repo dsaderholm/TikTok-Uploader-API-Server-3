@@ -27,12 +27,6 @@ CHROME_TMP_DIR = "/tmp/chrome-data"
 # Ensure Chrome temporary directory exists
 os.makedirs(CHROME_TMP_DIR, exist_ok=True)
 
-def process_hashtags(hashtags: str) -> str:
-    if not hashtags:
-        return ""
-    tags = hashtags.split(',')
-    processed_tags = ' '.join([f'#{tag.lstrip("#").strip()}' for tag in tags if tag.strip()])
-    return processed_tags
 
 def clean_string(s):
     if isinstance(s, str):
@@ -58,7 +52,6 @@ async def run_upload_in_thread(
     filename: str,
     description: str,
     accountname: str,
-    hashtags: Optional[str] = None,
     schedule: Optional[str] = None,
     headless: Optional[bool] = True,
 ):
@@ -69,7 +62,7 @@ async def run_upload_in_thread(
     chrome_user_dir = os.path.join(CHROME_TMP_DIR, session_id)
     os.makedirs(chrome_user_dir, exist_ok=True)
     
-    description_with_tags = f"{description} {process_hashtags(hashtags)}" if hashtags else description
+    description_with_tags = description
     cookie_file = os.path.join(COOKIE_DIR, f'{accountname}.txt')
     
     try:
@@ -111,7 +104,6 @@ async def upload_video_endpoint(
     video: UploadFile = File(...),
     description: str = Form(...),
     accountname: str = Form(...),
-    hashtags: Optional[str] = Form(None),
     schedule: Optional[str] = Form(None),
     headless: Optional[bool] = Form(True),
 ):
@@ -122,7 +114,6 @@ async def upload_video_endpoint(
         
         description = clean_string(description)
         accountname = clean_string(accountname)
-        hashtags = clean_string(hashtags) if hashtags else None
         
         cookie_file = os.path.join(COOKIE_DIR, f'{accountname}.txt')
         if not os.path.exists(cookie_file):
@@ -152,7 +143,6 @@ async def upload_video_endpoint(
                 filename=final_video_path,
                 description=description,
                 accountname=accountname,
-                hashtags=hashtags,
                 schedule=schedule,
                 headless=headless,
             )
