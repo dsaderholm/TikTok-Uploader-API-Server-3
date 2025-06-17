@@ -8,8 +8,13 @@ from selenium.webdriver.chrome.options import Options
 import logging
 import asyncio
 import uuid
+import threading
 
 app = FastAPI(title="TikTok Uploader API v3")
+
+# Global lock to prevent concurrent uploads
+upload_lock = threading.Lock()
+upload_in_progress = False
 
 logging.basicConfig(
     level=logging.DEBUG,
@@ -18,13 +23,10 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 COOKIE_DIR = "/app/cookies"
-
 CHROME_TMP_DIR = "/tmp/chrome-data"
 
 # Ensure Chrome temporary directory exists
 os.makedirs(CHROME_TMP_DIR, exist_ok=True)
-
-
 
 def create_chrome_options(user_data_dir: str) -> Options:
     """Create Chrome options with necessary settings"""
@@ -100,6 +102,15 @@ async def upload_video_endpoint(
     schedule: Optional[str] = Form(None),
     headless: Optional[bool] = Form(True),
 ):
+    global upload_in_progress
+    
+    # Check if upload is already in progress
+    with upload_lock:
+        if upload_in_progress:
+            logger.warning("Upload already in progress, rejecting request")
+            raise HTTPException(status_code=429, detail="Upload already in progress. Please wait.")
+        upload_in_progress = True
+    
     temp_files = []
 
     try:
@@ -151,6 +162,10 @@ async def upload_video_endpoint(
         raise HTTPException(status_code=500, detail=str(e))
         
     finally:
+        # Always reset the upload flag
+        with upload_lock:
+            upload_in_progress = False
+            
         for temp_file in temp_files:
             if temp_file and os.path.exists(temp_file):
                 try:
@@ -161,6 +176,14 @@ async def upload_video_endpoint(
 @app.get("/health")
 async def health_check():
     return {"status": "healthy"}
+
+@app.get("/status")
+async def get_status():
+    """Get current upload status"""
+    return {
+        "upload_in_progress": upload_in_progress,
+        "service": "TikTok Uploader API v3"
+    }
 
 if __name__ == "__main__":
     import uvicorn
